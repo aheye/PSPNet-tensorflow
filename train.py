@@ -119,9 +119,33 @@ def main():
             IMG_MEAN,
             coord)
         image_batch, label_batch = reader.dequeue(args.batch_size)
+
     
-    net = PSPNet101({'data': image_batch}, is_training=True, num_classes=args.num_classes)
-    
+    V_net = PSPNet101({'data': image_batch}, is_training=True, num_classes=args.num_classes)
+    #L_net = PSPNet101({'data': lidar_batch}, is_training=True, num_classes=args.num_classes)    
+
+    print(V_net.terminals)
+    #print(V_net.layers)
+
+    V_conv_outs = [V_net.layers['pool1_3x3_s2'], # 128
+                   V_net.layers['conv2_3'], # 256
+                   V_net.layers['conv3_4'], # 512
+                   V_net.layers['conv4_23'], # 2048
+                   V_net.layers['conv6']] # 512
+
+    L_conv_outs = [L_net.layers['pool_3x3_s2'],
+                   L_net.layers['conv2_3'],
+                   L_net.layers['conv3_4'],
+                   L_net.layers['conv3_23'],
+                   L_net.layers['conv6']]
+
+    # Get first layer feature space transform
+    prev_fst = V_conv_outs[0].fst(L_conv_outs[0])
+
+    for v_out, l_out in zip(V_conv_outs, L_conv_outs)[1:]:
+        prev_fst = v_out.fst(l_out, prev_fst)
+        # Just replace the next node in the dict wiht a new input!    
+
     raw_output = net.layers['conv6']
 
     # According from the prototxt in Caffe implement, learning rate must multiply by 10.0 in pyramid module

@@ -271,3 +271,30 @@ class Network(object):
     @layer
     def resize_bilinear(self, input, size, name):
         return tf.image.resize_bilinear(input, size=size, align_corners=True, name=name)
+
+    @layer
+    def fst(self, input, L_feats, prev_fused=None, out_chan=256, _lambda=0.1):
+        """Feature Space Transformation function
+        V_feats: Visual space features, 3d tensor
+        L_feats: Lidar space features, 3d tensor
+        prev_fused: if None, this is the first layer, return fst only
+                    if a Tensor, this will be used to create a residual fuse op
+        """
+        # Concatenate over feature map dimension
+        C = tf.concat([input, L_feats], axis=3)
+  
+        # Compute scalar and offset for FST linear function
+        scalar = tf.nn.conv2d(C, 256, (1, 1), padding='same')
+        offset = tf.nn.conv2d(C, 256, (1, 1), padding='same') 
+
+        # Compute fst tensor
+        fst = ((L_feats * scalar) + offset) + input
+        # Kill early if prev_fused is not set
+        if not prev_fused:
+            return fst
+
+        # Residucal based fuse function
+        fused = tf.nn.conv2d(prev_fused + (_lambda * fst), out_chan, (1,1), padding='same')
+        return fused
+
+
