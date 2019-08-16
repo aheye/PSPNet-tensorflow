@@ -34,9 +34,6 @@ class PLARD(Network):
              .batch_normalization(relu=True, name='L_conv1_3_3x3_bn')
              .max_pool(3, 3, 2, 2, padding='SAME', name='L_pool1_3x3_s2'))
 
-        ## DEBUG
-        print(tf.shape(self.layers['V_pool1_3x3_s2']))
-
         ## Compute first Feature Space Transform
         (self.feed('V_pool1_3x3_s2', 'L_pool1_3x3_s2')
              .fst(out_chan=128, name='fst1'))
@@ -45,7 +42,7 @@ class PLARD(Network):
              .conv(1, 1, 256, 1, 1, biased=False, relu=False, name='V_conv2_1_1x1_proj')
              .batch_normalization(relu=False, name='V_conv2_1_1x1_proj_bn'))
 
-         (self.feed('L_pool1_3x3_s2')
+        (self.feed('L_pool1_3x3_s2')
              .conv(1, 1, 256/scale_channels, 1, 1, biased=False, relu=False, name='L_conv2_1_1x1_proj')
              .batch_normalization(relu=False, name='L_conv2_1_1x1_proj_bn'))
 
@@ -131,12 +128,9 @@ class PLARD(Network):
              .conv(1, 1, 512/scale_channels, 2, 2, biased=False, relu=False, name='L_conv3_1_1x1_proj')
              .batch_normalization(relu=False, name='L_conv3_1_1x1_proj_bn'))
 
-        ## DEBUG
-        print(tf.shape(self.layers['V_conv2_3/relu']))
-
         ## Compute Second Feature Space Transformation
         (self.feed('V_conv2_3/relu', 'L_conv2_3/relu')
-            .fst(out_chan=256, prev_fust=self.layers['fst1'], name='fst2'))
+            .fst(out_chan=256, prev_fused=self.layers['fst1'], name='fst2'))
 
         ## Third Block, visual
         (self.feed('fst2')
@@ -244,12 +238,9 @@ class PLARD(Network):
              .conv(1, 1, 1024/scale_channels, 1, 1, biased=False, relu=False, name='L_conv4_1_1x1_proj')
              .batch_normalization(relu=False, name='L_conv4_1_1x1_proj_bn'))
 
-        ## DEBUG
-        print(tf.shape(self.layers['V_conv3_4/relu']))
-
         ## Compute Third Feature Space Transformation
         (self.feed('V_conv3_4/relu', 'L_conv3_4/relu')
-            .fst(out_chan=512, prev_fust=self.layers['fst2'], name='fst3'))
+            .fst(out_chan=512, prev_fused=self.layers['fst2'], name='fst3'))
 
         ## Fourth Block, visual
         (self.feed('fst3')
@@ -623,7 +614,7 @@ class PLARD(Network):
              .zero_padding(paddings=2, name='L_padding15')
              .atrous_conv(3, 3, 256/scale_channels, 2, biased=False, relu=False, name='L_conv4_8_3x3')
              .batch_normalization(relu=True, name='L_conv4_8_3x3_bn')
-             .conv(1, 1, 1024/scale_channels, 1, 1, biased=False, relu=False, name='V_conv4_8_1x1_increase')
+             .conv(1, 1, 1024/scale_channels, 1, 1, biased=False, relu=False, name='L_conv4_8_1x1_increase')
              .batch_normalization(relu=False, name='L_conv4_8_1x1_increase_bn'))
 
         (self.feed('L_conv4_7/relu',
@@ -813,12 +804,9 @@ class PLARD(Network):
              .conv(1, 1, 2048/scale_channels, 1, 1, biased=False, relu=False, name='L_conv5_1_1x1_proj')
              .batch_normalization(relu=False, name='L_conv5_1_1x1_proj_bn'))
 
-        ## DEBUG
-        print(tf.shape(self.layers['V_conv4_23/relu']))
-
         ## Compute Fourth Feature Space Transformation
         (self.feed('V_conv4_23/relu', 'L_conv4_23/relu')
-            .fst(out_chan=256, prev_fust=self.layers['fst3'], name='fst4'))
+            .fst(out_chan=256, prev_fused=self.layers['fst3'], name='fst4'))
 
         ## Fifth Block, visual
         (self.feed('fst4')
@@ -876,7 +864,7 @@ class PLARD(Network):
              .conv(1, 1, 512/scale_channels, 1, 1, biased=False, relu=False, name='L_conv5_2_1x1_reduce')
              .batch_normalization(relu=True, name='L_conv5_2_1x1_reduce_bn')
              .zero_padding(paddings=4, name='L_padding32')
-             .atrous_conv(3, 3, 512/scale_channels, 4, biased=False, relu=False, name='V_conv5_2_3x3')
+             .atrous_conv(3, 3, 512/scale_channels, 4, biased=False, relu=False, name='L_conv5_2_3x3')
              .batch_normalization(relu=True, name='L_conv5_2_3x3_bn')
              .conv(1, 1, 2048/scale_channels, 1, 1, biased=False, relu=False, name='L_conv5_2_1x1_increase')
              .batch_normalization(relu=False, name='L_conv5_2_1x1_increase_bn'))
@@ -898,42 +886,39 @@ class PLARD(Network):
              .add(name='L_conv5_3')
              .relu(name='L_conv5_3/relu'))
 
-        ## DEBUG
-        print(tf.shape(self.layers['V_conv5_3/relu']))
-
         ## Compute Fifth Feature Space Transformation
         (self.feed('V_conv5_3/relu', 'L_conv5_3/relu')
-            .fst(out_chan=2048, prev_fust=self.layers['fst4'], name='fst5'))
+            .fst(out_chan=2048, prev_fused=self.layers['fst4'], name='fst5'))
 
 
         conv5_3 = self.layers['fst5']
         shape = tf.shape(conv5_3)[1:3]
 
-        (self.feed('conv5_3/relu')
+        (self.feed('fst5')
              .avg_pool(90, 90, 90, 90, name='conv5_3_pool1')
              .conv(1, 1, 512/scale_channels, 1, 1, biased=False, relu=False, name='conv5_3_pool1_conv')
              .batch_normalization(relu=True, name='conv5_3_pool1_conv_bn')
              .resize_bilinear(shape, name='conv5_3_pool1_interp'))
 
-        (self.feed('conv5_3/relu')
+        (self.feed('fst5')
              .avg_pool(45, 45, 45, 45, name='conv5_3_pool2')
              .conv(1, 1, 512/scale_channels, 1, 1, biased=False, relu=False, name='conv5_3_pool2_conv')
              .batch_normalization(relu=True, name='conv5_3_pool2_conv_bn')
              .resize_bilinear(shape, name='conv5_3_pool2_interp'))
 
-        (self.feed('conv5_3/relu')
+        (self.feed('fst5')
              .avg_pool(30, 30, 30, 30, name='conv5_3_pool3')
              .conv(1, 1, 512/scale_channels, 1, 1, biased=False, relu=False, name='conv5_3_pool3_conv')
              .batch_normalization(relu=True, name='conv5_3_pool3_conv_bn')
              .resize_bilinear(shape, name='conv5_3_pool3_interp'))
 
-        (self.feed('conv5_3/relu')
+        (self.feed('fst5')
              .avg_pool(15, 15, 15, 15, name='conv5_3_pool6')
              .conv(1, 1, 512/scale_channels, 1, 1, biased=False, relu=False, name='conv5_3_pool6_conv')
              .batch_normalization(relu=True, name='conv5_3_pool6_conv_bn')
              .resize_bilinear(shape, name='conv5_3_pool6_interp'))
 
-        (self.feed('conv5_3/relu',
+        (self.feed('fst5',
                    'conv5_3_pool6_interp',
                    'conv5_3_pool3_interp',
                    'conv5_3_pool2_interp',

@@ -12,13 +12,13 @@ import time
 import tensorflow as tf
 import numpy as np
 
-from model import PSPNet101
+from model import PSPNet101, PLARD
 from tools import prepare_label
 from image_reader import ImageReader
 
 IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
 
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 DATA_DIRECTORY = '/SSD_data/cityscapes_dataset/cityscape'
 DATA_LIST_PATH = './list/cityscapes_train_list.txt'
 IGNORE_LABEL = 255
@@ -119,32 +119,12 @@ def main():
             IMG_MEAN,
             coord)
         image_batch, label_batch = reader.dequeue(args.batch_size)
+        lidar_batch = image_batch 
 
-    
-    V_net = PSPNet101({'data': image_batch}, is_training=True, num_classes=args.num_classes)
-    #L_net = PSPNet101({'data': lidar_batch}, is_training=True, num_classes=args.num_classes)    
 
-    print(V_net.terminals)
-    #print(V_net.layers)
+    net = PLARD({'V_data':image_batch, 'L_data':lidar_batch}, is_training=True, num_classes=args.num_classes)
 
-    V_conv_outs = [V_net.layers['pool1_3x3_s2'], # 128
-                   V_net.layers['conv2_3'], # 256
-                   V_net.layers['conv3_4'], # 512
-                   V_net.layers['conv4_23'], # 2048
-                   V_net.layers['conv6']] # 512
-
-    L_conv_outs = [L_net.layers['pool_3x3_s2'],
-                   L_net.layers['conv2_3'],
-                   L_net.layers['conv3_4'],
-                   L_net.layers['conv3_23'],
-                   L_net.layers['conv6']]
-
-    # Get first layer feature space transform
-    prev_fst = V_conv_outs[0].fst(L_conv_outs[0])
-
-    for v_out, l_out in zip(V_conv_outs, L_conv_outs)[1:]:
-        prev_fst = v_out.fst(l_out, prev_fst)
-        # Just replace the next node in the dict wiht a new input!    
+    print(net.terminals)
 
     raw_output = net.layers['conv6']
 
@@ -201,7 +181,7 @@ def main():
         
     # Set up tf session and initialize variables. 
     config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
+    config.gpu_options.allow_growth = False 
     sess = tf.Session(config=config)
     init = tf.global_variables_initializer()
     

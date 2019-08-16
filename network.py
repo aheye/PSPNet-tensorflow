@@ -273,28 +273,54 @@ class Network(object):
         return tf.image.resize_bilinear(input, size=size, align_corners=True, name=name)
 
     @layer
-    def fst(self, inputs, prev_fused=None, out_chan=256, _lambda=0.1):
+    def fst(self, inputs, name, prev_fused=None, out_chan=256, _lambda=0.1):
         """Feature Space Transformation function
         V_feats: Visual space features, 3d tensor
         L_feats: Lidar space features, 3d tensor
         prev_fused: if None, this is the first layer, return fst only
                     if a Tensor, this will be used to create a residual fuse op
         """
-        # Concatenate over feature map dimension
-        C = tf.concat([inputs[0], inputs[1]], axis=3)
-  
-        # Compute scalar and offset for FST linear function
-        scalar = tf.nn.conv2d(C, 256, (1, 1), padding='same')
-        offset = tf.nn.conv2d(C, 256, (1, 1), padding='same') 
+        with tf.variable_scope(name) as scope:
+            # Concatenate over feature map dimension
+            C = tf.concat([inputs[0], inputs[1]], axis=3)
+ 
+            # Compute scalar and offset for FST linear function
+            stride = [1, 1, 1, 1]
+            c_i = C.get_shape()[-1]
 
-        # Compute fst tensor
-        fst = ((inputs[1] * scalar) + offset) + inputs[0]
-        # Kill early if prev_fused is not set
-        if not prev_fused:
-            return fst
+            scalar_kernel = self.make_var('scalar_weights', shape=[1, 1, c_i, int(c_i)/2])
+            scalar = tf.nn.conv2d(C, filter=scalar_kernel, strides=stride, padding='SAME', data_format=DEFAULT_DATAFORMAT)
 
-        # Residucal based fuse function
-        fused = tf.nn.conv2d(prev_fused + (_lambda * fst), out_chan, (1,1), padding='same')
-        return fused
+            offset_kernel = self.make_var('offset_weights', shape=[1, 1, c_i, int(c_i)/2])
+            offset = tf.nn.conv2d(C, filter=scalar_kernel, strides=stride, padding='SAME', data_format=DEFAULT_DATAFORMAT) 
+
+            # Compute fst tensor
+            fst_kernel = self.make_var('fst_weights', shape=[1, 1, int(c_i)/2, out_chan])
+            fst = tf.nn.conv2d(((inputs[1] * scalar) + offset) + inputs[0],
+                               filter=fst_kernel, 
+                               strides=stride,
+                               padding='SAME')
+            # Kill early if prev_fused is not set
+            if prev_fused is None:
+                return fst
+
+            # Residucal based fuse function
+            c_i = prev_fused.get_shape()[-1]
+            if prev_fused.get_shape()[-2] > fst.get_shape()[-2]:
+                fuse_stride = 2
+                fuse_padding = "SAME"
+            else:
+                fuse_stride = 1
+                fuse_padding = "SAME"
+            fused_kernel = self.make_var('fused_weights', shape=[fuse_stride, fuse_stride, c_i, out_chan])
+            fused = tf.nn.conv2d(prev_fused,
+                                 filter=fused_kernel,
+                                 strides=[1, fuse_stride, fuse_stride, 1],
+                                 padding=fuse_padding)
+            if fuse_stride is 2 and False:
+                pad_mat = np.array([[0,0], [1, 1], [1, 1], [0, 0]])
+                fused = tf.pad(fused, paddings=pad_mat, name="padding")
+            fused = fused + (_lambda * fst)
+            return fused
 
 
