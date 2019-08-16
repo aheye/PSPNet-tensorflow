@@ -305,7 +305,7 @@ class Network(object):
             offset = tf.nn.conv2d(C, filter=scalar_kernel, strides=stride, padding='SAME', data_format=DEFAULT_DATAFORMAT) 
 
             # Compute fst tensor
-            fst_kernel = self.make_var('fst_weights', shape=[1, 1, int(c_i)/2, out_chan])
+            fst_kernel = self.make_var('fst_weights', shape=[1, 1, v_i, out_chan])
             fst = tf.nn.conv2d(((lidar_scale * scalar) + offset) + inputs[0],
                                filter=fst_kernel, 
                                strides=stride,
