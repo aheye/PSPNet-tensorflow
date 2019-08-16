@@ -30,7 +30,7 @@ class PLARD(Network):
              .relu(name='L_conv1_1_3x3_s2_bn_relu')
              .conv(3, 3, 64/scale_channels, 1, 1, biased=False, relu=False, padding='SAME', name='L_conv1_2_3x3')
              .batch_normalization(relu=True, name='L_conv1_2_3x3_bn')
-             .conv(3, 3, 128/scale_channels, 1, 1, biased=False, relu=False, padding='SAME', name='L_conv1_3_3x3')
+             .conv(3, 3, 128, 1, 1, biased=False, relu=False, padding='SAME', name='L_conv1_3_3x3')
              .batch_normalization(relu=True, name='L_conv1_3_3x3_bn')
              .max_pool(3, 3, 2, 2, padding='SAME', name='L_pool1_3x3_s2'))
 
@@ -118,7 +118,7 @@ class PLARD(Network):
              .zero_padding(paddings=1, name='L_padding3')
              .conv(3, 3, 64/scale_channels, 1, 1, biased=False, relu=False, name='L_conv2_3_3x3')
              .batch_normalization(relu=True, name='L_conv2_3_3x3_bn')
-             .conv(1, 1, 256/scale_channels, 1, 1, biased=False, relu=False, name='L_conv2_3_1x1_increase')
+             .conv(1, 1, 256, 1, 1, biased=False, relu=False, name='L_conv2_3_1x1_increase')
              .batch_normalization(relu=False, name='L_conv2_3_1x1_increase_bn'))
 
         (self.feed('L_conv2_2/relu',
@@ -228,7 +228,7 @@ class PLARD(Network):
              .zero_padding(paddings=1, name='L_padding7')
              .conv(3, 3, 128/scale_channels, 1, 1, biased=False, relu=False, name='L_conv3_4_3x3')
              .batch_normalization(relu=True, name='L_conv3_4_3x3_bn')
-             .conv(1, 1, 512/scale_channels, 1, 1, biased=False, relu=False, name='L_conv3_4_1x1_increase')
+             .conv(1, 1, 512, 1, 1, biased=False, relu=False, name='L_conv3_4_1x1_increase')
              .batch_normalization(relu=False, name='L_conv3_4_1x1_increase_bn'))
 
         (self.feed('L_conv3_3/relu',
@@ -794,7 +794,7 @@ class PLARD(Network):
              .zero_padding(paddings=2, name='L_padding30')
              .atrous_conv(3, 3, 256/scale_channels, 2, biased=False, relu=False, name='L_conv4_23_3x3')
              .batch_normalization(relu=True, name='L_conv4_23_3x3_bn')
-             .conv(1, 1, 1024/scale_channels, 1, 1, biased=False, relu=False, name='L_conv4_23_1x1_increase')
+             .conv(1, 1, 1024, 1, 1, biased=False, relu=False, name='L_conv4_23_1x1_increase')
              .batch_normalization(relu=False, name='L_conv4_23_1x1_increase_bn'))
 
         (self.feed('L_conv4_22/relu',

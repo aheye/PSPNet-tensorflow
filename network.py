@@ -288,16 +288,25 @@ class Network(object):
             # Compute scalar and offset for FST linear function
             stride = [1, 1, 1, 1]
             c_i = C.get_shape()[-1]
+            v_i = inputs[0].get_shape()[-1]
+            l_i = inputs[1].get_shape()[-1]
 
-            scalar_kernel = self.make_var('scalar_weights', shape=[1, 1, c_i, int(c_i)/2])
+            # Upscale lidar features
+            lidar_kernel = self.make_var('lidar_weights', shape=[1, 1, l_i, v_i])
+            lidar_scale = tf.nn.conv2d(inputs[1],
+                                       filter=lidar_kernel,
+                                       strides=stride,
+                                       padding="SAME")
+
+            scalar_kernel = self.make_var('scalar_weights', shape=[1, 1, c_i, v_i])
             scalar = tf.nn.conv2d(C, filter=scalar_kernel, strides=stride, padding='SAME', data_format=DEFAULT_DATAFORMAT)
 
-            offset_kernel = self.make_var('offset_weights', shape=[1, 1, c_i, int(c_i)/2])
+            offset_kernel = self.make_var('offset_weights', shape=[1, 1, c_i, v_i])
             offset = tf.nn.conv2d(C, filter=scalar_kernel, strides=stride, padding='SAME', data_format=DEFAULT_DATAFORMAT) 
 
             # Compute fst tensor
             fst_kernel = self.make_var('fst_weights', shape=[1, 1, int(c_i)/2, out_chan])
-            fst = tf.nn.conv2d(((inputs[1] * scalar) + offset) + inputs[0],
+            fst = tf.nn.conv2d(((lidar_scale * scalar) + offset) + inputs[0],
                                filter=fst_kernel, 
                                strides=stride,
                                padding='SAME')
@@ -307,6 +316,7 @@ class Network(object):
 
             # Residucal based fuse function
             c_i = prev_fused.get_shape()[-1]
+            # Shrink size of prev_fuse if needed
             if prev_fused.get_shape()[-2] > fst.get_shape()[-2]:
                 fuse_stride = 2
                 fuse_padding = "SAME"
@@ -318,9 +328,6 @@ class Network(object):
                                  filter=fused_kernel,
                                  strides=[1, fuse_stride, fuse_stride, 1],
                                  padding=fuse_padding)
-            if fuse_stride is 2 and False:
-                pad_mat = np.array([[0,0], [1, 1], [1, 1], [0, 0]])
-                fused = tf.pad(fused, paddings=pad_mat, name="padding")
             fused = fused + (_lambda * fst)
             return fused
 
