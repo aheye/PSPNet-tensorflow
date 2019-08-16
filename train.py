@@ -122,7 +122,10 @@ def main():
         lidar_batch = image_batch 
 
 
-    net = PLARD({'V_data':image_batch, 'L_data':lidar_batch}, is_training=True, num_classes=args.num_classes)
+    net = PLARD({'V_data':image_batch, 'L_data':lidar_batch},
+                is_training=True,
+                num_classes=args.num_classes,
+                scale_channels=8)
 
     print(net.terminals)
 

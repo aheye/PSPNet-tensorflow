@@ -36,7 +36,8 @@ def layer(op):
 
 class Network(object):
 
-    def __init__(self, inputs, trainable=True, is_training=False, num_classes=21):
+    def __init__(self, inputs, trainable=True, is_training=False, num_classes=21,
+                 scale_channels=1):
         # The input nodes for this network
         self.inputs = inputs
         # The current list of terminal nodes
@@ -50,7 +51,7 @@ class Network(object):
                                                        shape=[],
                                                        name='use_dropout')
         self.is_training = is_training
-        self.setup(is_training, num_classes)
+        self.setup(is_training, num_classes, scale_channels=scale_channels)
 
     def setup(self, is_training):
         '''Construct the network. '''
