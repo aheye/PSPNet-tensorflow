@@ -8,12 +8,14 @@ import argparse
 import os
 import sys
 import time
+import math
 
 import tensorflow as tf
 import numpy as np
 
 from model import PSPNet101, PLARD
 from tools import prepare_label
+from image_velo_reader import ImageAndVeloReader
 from image_reader import ImageReader
 
 IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
@@ -21,6 +23,8 @@ IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
 BATCH_SIZE = 1
 DATA_DIRECTORY = '/SSD_data/cityscapes_dataset/cityscape'
 DATA_LIST_PATH = './list/cityscapes_train_list.txt'
+VELO_DIRECTORY = '/lus/snx11049/aheye/data/kitti/data_road_adt/training'
+VELO_LIST_PATH = './list/adt_train.txt'
 IGNORE_LABEL = 255
 INPUT_SIZE = '713,713'
 LEARNING_RATE = 1e-3
@@ -44,6 +48,10 @@ def get_arguments():
                         help="Path to the directory containing the PASCAL VOC dataset.")
     parser.add_argument("--data-list", type=str, default=DATA_LIST_PATH,
                         help="Path to the file listing the images in the dataset.")
+    parser.add_argument("--velo-dir", type=str, default=VELO_DIRECTORY,
+                        help="Path to the directory containing the velodyne kitti data")
+    parser.add_argument("--velo-list", type=str, default=VELO_LIST_PATH,
+                        help="Path to the file listing the velo files")
     parser.add_argument("--ignore-label", type=int, default=IGNORE_LABEL,
                         help="The index of the label to ignore during the training.")
     parser.add_argument("--input-size", type=str, default=INPUT_SIZE,
@@ -82,6 +90,8 @@ def get_arguments():
                         help="whether to get update_op from tf.Graphic_Keys")
     parser.add_argument("--train-beta-gamma", action="store_true",
                         help="whether to train beta & gamma in bn layer")
+    parser.add_argument("--network", type=str, default="PSPNet101",
+                        help="Network to train. Choose from PSPNet101 or PLARD")
     return parser.parse_args()
 
 def save(saver, sess, logdir, step):
@@ -109,25 +119,36 @@ def main():
     coord = tf.train.Coordinator()
     
     with tf.name_scope("create_inputs"):
-        reader = ImageReader(
-            args.data_dir,
-            args.data_list,
-            input_size,
-            args.random_scale,
-            args.random_mirror,
-            args.ignore_label,
-            IMG_MEAN,
-            coord)
-        image_batch, label_batch = reader.dequeue(args.batch_size)
-        lidar_batch = image_batch 
+        if args.network is "PLARD":
+            reader = ImageAndVeloReader(
+                args.data_dir,
+                args.data_list,
+                args.velo_dir,
+                args.velo_list,
+                input_size,
+                args.random_scale,
+                args.random_mirror,
+                args.ignore_label,
+                IMG_MEAN,
+                coord)
+            image_batch, label_batch, lidar_batch = reader.dequeue(args.batch_size)
+        else:
+            reader = ImageReader(
+                args.data_dir,
+                args.data_list,
+                input_size,
+                args.random_scale,
+                args.random_mirror,
+                args.ignore_label,
+                IMG_MEAN,
+                coord)
+            image_batch, label_batch = reader.dequeue(args.batch_size)
 
 
     net = PLARD({'V_data':image_batch, 'L_data':lidar_batch},
                 is_training=True,
                 num_classes=args.num_classes,
                 scale_channels=8)
-
-    print(net.terminals)
 
     raw_output = net.layers['conv6']
 
@@ -216,7 +237,8 @@ def main():
         else:
             loss_value, _ = sess.run([reduced_loss, train_op], feed_dict=feed_dict)
         duration = time.time() - start_time
-        print('step {:d} \t loss = {:.3f}, ({:.3f} sec/step)'.format(step, loss_value, duration))
+        if not math.isnan(loss_value):
+            print('step {:d} \t loss = {:.3f}, ({:.3f} sec/step)'.format(step, loss_value, duration))
         
     coord.request_stop()
     coord.join(threads)

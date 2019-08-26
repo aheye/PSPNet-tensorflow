@@ -20,6 +20,8 @@ def image_scaling(img, label, velo):
     img = tf.image.resize_images(img, new_shape)
     label = tf.image.resize_nearest_neighbor(tf.expand_dims(label, 0), new_shape)
     label = tf.squeeze(label, squeeze_dims=[0])
+    #velo = tf.image.resize_nearest_neighbor(tf.expand_dims(velo, 0), new_shape)
+    #velo = tf.squeeze(velo, squeeze_dims=[0])
     velo = tf.image.resize_images(velo, new_shape)
 
     return img, label, velo
@@ -33,18 +35,19 @@ def random_crop_and_pad_image_and_labels(image, label, velo, crop_h, crop_w, ign
 
     last_image_dim = tf.shape(image)[-1]
     last_label_dim = tf.shape(label)[-1]
+    last_velo_dim = tf.shape(velo)[-1]
     combined_crop = tf.random_crop(combined_pad, [crop_h,crop_w,4])
     img_crop = combined_crop[:, :, :last_image_dim]
     label_crop = combined_crop[:, :, last_image_dim:]
     label_crop = label_crop + ignore_label
     label_crop = tf.cast(label_crop, dtype=tf.uint8)
-    velo_crop = combined_crop[:, :, :last_image_dim]
+    velo_crop = combined_crop[:, :, last_image_dim:]
 
     # Set static shape so that tensorflow knows shape at compile time.
     img_crop.set_shape((crop_h, crop_w, 3))
     label_crop.set_shape((crop_h,crop_w, 1))
-    velo_crob.set_shape((crop_h, crop_w, 1))
-    return img_crop, label_crop
+    velo_crop.set_shape((crop_h, crop_w, 1))
+    return img_crop, label_crop, velo_crop
 
 def read_file_lists(data_dir, data_list, num_per_line):
     f = open(data_list, 'r')
@@ -64,11 +67,10 @@ def read_file_lists(data_dir, data_list, num_per_line):
             if not tf.gfile.Exists(path):
                 raise ValueError('Failed to find file' + path)
             ret_lists[i].append(path)
-
     return ret_lists
 
 def read_labeled_image_list(data_dir, data_list):
-    lists = read_file_lists(data_dir, data_dir, 2)
+    lists = read_file_lists(data_dir, data_list, 2)
     return lists[0], lists[1]
 
 def read_lidar_list(data_dir, data_list):
@@ -87,18 +89,18 @@ def read_images_from_disk(input_queue, input_size, random_scale, random_mirror, 
 
     label = tf.image.decode_png(label_contents, channels=1)
 
-    velo = tf.convert_to_tensor(np.load(velo_contents))
+    velo = tf.image.decode_image(velo_contents, channels=1)
 
     if input_size is not None:
         h, w = input_size
 
         if random_scale:
-            img, label = image_scaling(img, label, velo)
+            img, label, _ = image_scaling(img, label, velo)
 
         if random_mirror:
-            img, label = image_mirroring(img, label, velo)
+            img, label, _ = image_mirroring(img, label, velo)
             
-        img, label = random_crop_and_pad_image_and_labels(img, label, velo, h, w, ignore_label)
+        img, label, velo = random_crop_and_pad_image_and_labels(img, label, velo, h, w, ignore_label)
 
     return img, label, velo
 
@@ -125,11 +127,14 @@ class ImageAndVeloReader(object):
         self.images = tf.convert_to_tensor(self.image_list, dtype=tf.string)
         self.labels = tf.convert_to_tensor(self.label_list, dtype=tf.string)
         self.velos = tf.convert_to_tensor(self.lidar_list, dtype=tf.string)
+
         self.queue = tf.train.slice_input_producer([self.images, self.labels, self.velos],
                                                    shuffle=input_size is not None) # not shuffling if it is val
-        self.image, self.label, self.velo = read_images_from_disk(self.queue, self.input_size, random_scale, random_mirror, ignore_label, img_mean)
+        self.image, self.label, self.velo = read_images_from_disk(self.queue, 
+                                                                  self.input_size,
+                                                                  random_scale, random_mirror, ignore_label, img_mean)
 
     def dequeue(self, num_elements):
-        image_batch, label_batch = tf.train.batch([self.image, self.label, self.velo],
+        image_batch, label_batch, velo_batch = tf.train.batch([self.image, self.label, self.velo],
                                                   num_elements)
-        return image_batch, label_batch
+        return image_batch, label_batch, velo_batch
