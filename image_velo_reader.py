@@ -29,20 +29,22 @@ def image_scaling(img, label, velo):
 def random_crop_and_pad_image_and_labels(image, label, velo, crop_h, crop_w, ignore_label=255):
     label = tf.cast(label, dtype=tf.float32)
     label = label - ignore_label # Needs to be subtracted and later added due to 0 padding.
-    combined = tf.concat(axis=2, values=[image, label])
+    velo = tf.cast(velo, dtype=tf.float32)
+    combined = tf.concat(axis=2, values=[image, label, velo])
     image_shape = tf.shape(image)
     combined_pad = tf.image.pad_to_bounding_box(combined, 0, 0, tf.maximum(crop_h, image_shape[0]), tf.maximum(crop_w, image_shape[1]))
 
     last_image_dim = tf.shape(image)[-1]
-    last_label_dim = tf.shape(label)[-1]
+    last_label_dim = tf.shape(label)[-1] + last_image_dim
     last_velo_dim = tf.shape(velo)[-1]
     combined_crop = tf.random_crop(combined_pad, [crop_h,crop_w,4])
-    img_crop = combined_crop[:, :, :last_image_dim]
-    label_crop = combined_crop[:, :, last_image_dim:]
+    img_crop = combined_crop[:, :, :3]
+    label_crop = combined_crop[:, :, -2]
     label_crop = label_crop + ignore_label
+    label_crop = tf.expand_dims(label_crop, dim=2)
     label_crop = tf.cast(label_crop, dtype=tf.uint8)
-    velo_crop = combined_crop[:, :, last_image_dim:]
-
+    velo_crop = combined_crop[:, :, -2]
+    velo_crop = tf.expand_dims(velo_crop, dim=2)
     # Set static shape so that tensorflow knows shape at compile time.
     img_crop.set_shape((crop_h, crop_w, 3))
     label_crop.set_shape((crop_h,crop_w, 1))

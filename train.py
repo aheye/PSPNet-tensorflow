@@ -92,6 +92,8 @@ def get_arguments():
                         help="whether to train beta & gamma in bn layer")
     parser.add_argument("--network", type=str, default="PSPNet101",
                         help="Network to train. Choose from PSPNet101 or PLARD")
+    parser.add_argument("--dist", action='store_true',
+                        help="If set, use the Cray DL Plugin for parallel training")
     return parser.parse_args()
 
 def save(saver, sess, logdir, step):
@@ -110,6 +112,9 @@ def load(saver, sess, ckpt_path):
 def main():
     """Create the model and start the training."""
     args = get_arguments()
+
+    if args.dist:
+        import dl_comm.tensorflow as cdl
     
     h, w = map(int, args.input_size.split(','))
     input_size = (h, w)
@@ -119,7 +124,7 @@ def main():
     coord = tf.train.Coordinator()
     
     with tf.name_scope("create_inputs"):
-        if args.network is "PLARD":
+        if args.network == "PLARD":
             reader = ImageAndVeloReader(
                 args.data_dir,
                 args.data_list,
@@ -145,10 +150,16 @@ def main():
             image_batch, label_batch = reader.dequeue(args.batch_size)
 
 
-    net = PLARD({'V_data':image_batch, 'L_data':lidar_batch},
-                is_training=True,
-                num_classes=args.num_classes,
-                scale_channels=8)
+    if args.network == "PLARD":
+        net = PLARD({'V_data':image_batch, 'L_data':lidar_batch},
+                    is_training=True,
+                    num_classes=args.num_classes,
+                    scale_channels=8)
+        print("_______________\n_______________")
+        print(lidar_batch)
+        print(image_batch)
+    else:
+        net = PSPNet101({'data':image_batch}, is_training=True, num_classes=args.num_classes)
 
     raw_output = net.layers['conv6']
 
@@ -192,6 +203,11 @@ def main():
         opt_fc_w = tf.train.MomentumOptimizer(learning_rate * 10.0, args.momentum)
         opt_fc_b = tf.train.MomentumOptimizer(learning_rate * 20.0, args.momentum)
 
+        if args.dist:
+            opt_conv = cdl.DistributedOptimizer(opt_conv)
+            opt_fc_w = cdl.DistributedOptimizer(opt_fc_w)
+            opt_fc_b = cdl.DistributedOptimizer(opt_fc_b)
+
         grads = tf.gradients(reduced_loss, conv_trainable + fc_w_trainable + fc_b_trainable)
         grads_conv = grads[:len(conv_trainable)]
         grads_fc_w = grads[len(conv_trainable) : (len(conv_trainable) + len(fc_w_trainable))]
@@ -205,7 +221,10 @@ def main():
         
     # Set up tf session and initialize variables. 
     config = tf.ConfigProto()
-    config.gpu_options.allow_growth = False 
+    config.gpu_options.allow_growth = True
+    if args.dist:
+        config.gpu_options.visible_device_list = str(cdl.local_rank())
+        bcast_global_variables_op = cdl.broadcast_global_variables(0)
     sess = tf.Session(config=config)
     init = tf.global_variables_initializer()
     
@@ -214,7 +233,7 @@ def main():
     # Saver for storing checkpoints of the model.
     saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=10)
 
-    ckpt = tf.train.get_checkpoint_state(SNAPSHOT_DIR)
+    ckpt = tf.train.get_checkpoint_state(args.snapshot_dir)
     if ckpt and ckpt.model_checkpoint_path:
         loader = tf.train.Saver(var_list=restore_var)
         load_step = int(os.path.basename(ckpt.model_checkpoint_path).split('-')[1])
@@ -223,8 +242,13 @@ def main():
         print('No checkpoint file found.')
         load_step = 0
 
+    if args.dist:
+        sess.run(bcast_global_variables_op)
+
     # Start queue threads.
     threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+
+    last_loss = None
 
     # Iterate over training steps.
     for step in range(args.num_steps):
@@ -233,13 +257,17 @@ def main():
         feed_dict = {step_ph: step}
         if step % args.save_pred_every == 0:
             loss_value, _ = sess.run([reduced_loss, train_op], feed_dict=feed_dict)
-            save(saver, sess, args.snapshot_dir, step)
+            if not args.dist or cdl.get_rank() == 0:
+                save(saver, sess, args.snapshot_dir, step)
         else:
             loss_value, _ = sess.run([reduced_loss, train_op], feed_dict=feed_dict)
         duration = time.time() - start_time
         if not math.isnan(loss_value):
+            last_loss = loss_value
             print('step {:d} \t loss = {:.3f}, ({:.3f} sec/step)'.format(step, loss_value, duration))
-        
+
+    print("FoM: %e" % last_loss)
+
     coord.request_stop()
     coord.join(threads)
     
